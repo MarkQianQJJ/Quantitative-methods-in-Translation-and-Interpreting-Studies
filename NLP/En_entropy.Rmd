@@ -1,0 +1,52 @@
+---
+title: "entropy"
+author: "Jiajun"
+date: "2025-06-15"
+output: html_document
+---
+
+```{r}
+# Install required packages if not already installed
+#install.packages("quanteda")
+#install.packages("quanteda.textstats")
+```
+
+```{r}
+# Load the necessary libraries
+library(quanteda)
+library(quanteda.textstats)
+```
+
+```{r}
+# Define a sentence
+sentenceA <- "DT JJ brown fox jumps over the lazy dog. The dog barks."
+```
+
+```{r}
+# Convert to corpus
+corp <- corpus(sentenceA)
+```
+
+```{r}
+# Tokenize into words
+toks <- tokens(corp, remove_punct = TRUE)
+```
+
+```{r}
+# Create a document-feature matrix (DFM)
+dfm_mat <- dfm(toks)
+```
+
+```{r}
+# Calculate entropy
+entropy <- textstat_entropy(dfm_mat)
+```
+
+```{r}
+# View result
+print(entropy)
+```
+```{r}
+?textstat_entropy
+```
+
