@@ -1,0 +1,90 @@
+---
+title: "Power analysis"
+author: "Jiajun"
+date: "2025-04-07"
+output: html_document
+---
+
+```{r}
+#install.packages("pwr")
+library(pwr)
+```
+
+```{r}
+?pwr.r.test
+```
+
+```{r}
+?cohen.ES
+```
+
+```{r}
+cohen.ES(test = "r",size = "large")
+```
+
+```{r}
+r_power <- pwr.r.test(r = .5,
+                      sig.level = .05,
+                      power = .8,
+                      alternative = "two.sided")
+r_power
+```
+
+```{r}
+plot(r_power)
+```
+
+```{r}
+cohen.ES(test = "t",size = "small")
+```
+
+```{r}
+?pwr.t.test
+```
+
+```{r}
+t_power <- pwr.t.test(d = .8,
+                      sig.level = .05,
+                      power = .8,
+                      type = "two.sample",
+                      alternative = "two.sided")
+t_power
+```
+
+Smaller effect size → larger sample size: To detect small effects, you need more participants to overcome the variability and make the effect statistically significant.
+Larger effect size → smaller sample size: Large effects are easier to detect, so fewer participants are required.
+
+```{r}
+plot(t_power)
+```
+
+```{r}
+t_power <- pwr.t.test(n = 30,
+                      sig.level = .05,
+                      d = .5,
+                      type = "two.sample",
+                      alternative = "two.sided")
+t_power
+```
+
+```{r}
+?pwr.anova.test
+```
+
+```{r}
+cohen.ES(test = "f",size = "large")
+```
+
+```{r}
+anova_power <- pwr.anova.test(k = 4,
+               f = .35,
+               sig.level = .05,
+               power = .8)
+
+anova_power
+```
+
+```{r}
+plot(anova_power)
+```
+
