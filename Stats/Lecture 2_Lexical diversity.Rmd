@@ -1,0 +1,28 @@
+---
+title: "Lexical diversity"
+author: "Jiajun"
+date: "2026-04-01"
+output: html_document
+---
+
+```{r}
+library(quanteda.textstats)
+```
+
+
+```{r}
+txt <- c("Anyway, like I was sayin', shrimp is the fruit of the sea. You can
+          barbecue it, boil it, broil it, bake it, saute it.",
+         "There's shrimp-kabobs,
+          shrimp creole, shrimp gumbo. Pan fried, deep fried, stir-fried. There's
+          pineapple shrimp, lemon shrimp, coconut shrimp, pepper shrimp, shrimp soup,
+          shrimp stew, shrimp salad, shrimp and potatoes, shrimp burger, shrimp
+          sandwich.")
+```
+
+https://quanteda.io/reference/textstat_lexdiv.html
+```{r}
+tokens(txt) %>%
+  textstat_lexdiv(measure = c("TTR", "CTTR", "K"))
+```
+
