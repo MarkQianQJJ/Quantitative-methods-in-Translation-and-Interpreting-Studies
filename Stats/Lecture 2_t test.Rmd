@@ -1,0 +1,57 @@
+---
+title: "t test"
+author: "Jiajun"
+date: "2026-04-01"
+output: html_document
+---
+
+```{r}
+setwd("D:/计量方法在翻译研究中的应用2026/Lecture 2")
+```
+
+```{r setup, include=FALSE}
+library(tidyverse)
+
+corpus <- read.csv("sttr_results.csv")
+```
+
+```{r}
+attach(corpus)
+par(mfrow=c(1,2))
+hist(STTR[TextType=='EO'],main='',xlab='EO')
+
+hist(STTR[TextType=='HT'],main='',xlab='HT')
+```
+```{r}
+shapiro.test(STTR[TextType=='EO'])
+```
+
+```{r}
+shapiro.test(STTR[TextType=='HT'])
+```
+
+```{r}
+wilcox.test(STTR~TextType)
+```
+
+```{r}
+library(rstatix)
+effect <- wilcox_effsize(
+    data = corpus,
+    formula = STTR~TextType,
+    paired = FALSE
+  )
+effect
+```
+
+```{r}
+library(ggplot2)
+ggplot(corpus, aes(TextType, STTR, fill = TextType)) +
+  geom_boxplot() +
+  scale_y_continuous("STTR")+
+  scale_x_discrete("corpus") +
+  theme(legend.position = "top")
+
+```
+
+A Wilcoxon rank-sum test revealed a significant difference in STTR between EO and HT, with EO showing higher STTR than HT, W = 8095, p < .001, r = .67.
