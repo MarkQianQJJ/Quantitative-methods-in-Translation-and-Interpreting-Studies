@@ -1,0 +1,1642 @@
+---
+title: "ZCTC_LCMC"
+author: "Jiajun"
+date: "2026-05-02"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    code_folding: show
+---
+# Load packages
+```{r}
+library(xml2)
+library(openxlsx)
+library(readr)
+```
+
+# ZCTC corpus genre list
+## Set the folder path
+```{r}
+folder_path <- "D:/NLPtools/ZCTC WordSmith edition"
+```
+
+## Get all .txt files in the folder
+```{r}
+txt_files <- list.files(path = folder_path, pattern = "\\.txt$", full.names = TRUE)
+```
+
+## Create an empty results table
+```{r}
+genre_data <- data.frame(FileID = character(), Genre = character(), stringsAsFactors = FALSE)
+```
+
+## Extract file and genre names
+```{r}
+for (file in txt_files) {
+  file_name <- tools::file_path_sans_ext(basename(file))  
+  
+  xml_text <- read_file(file, locale = locale(encoding = "UTF-16LE"))
+  
+  tryCatch({
+    doc <- read_xml(xml_text)
+    genre <- xml_attr(xml_find_first(doc, "//cesDoc"), "genre")
+    genre <- trimws(genre)  
+  })
+  
+  genre_data <- rbind(genre_data, data.frame(FileID = file_name, Genre = genre, stringsAsFactors = FALSE))
+}
+```
+
+## Save the results to Excel
+```{r}
+output_path <- file.path(folder_path, "ZCTC_genre_list.xlsx")
+write.xlsx(genre_data, file = output_path, rowNames = FALSE)
+```
+
+# LCMC corpus genre list
+## Set the folder path
+```{r}
+folder_path <- "D:/NLPtools/LCMCv2 WordSmith edition"
+```
+
+## Get all .txt files in the folder
+```{r}
+txt_files <- list.files(path = folder_path, pattern = "\\.txt$", full.names = TRUE)
+```
+
+## Create an empty results table
+```{r}
+genre_data <- data.frame(FileID = character(), Genre = character(), stringsAsFactors = FALSE)
+```
+
+## Extract file and genre names
+```{r}
+for (file in txt_files) {
+  file_name <- tools::file_path_sans_ext(basename(file))  
+  
+
+  xml_text <- read_file(file, locale = locale(encoding = "UTF-16LE"))
+  
+
+  tryCatch({
+    doc <- read_xml(xml_text)
+    genre <- xml_attr(xml_find_first(doc, "//cesDoc"), "genre")
+    genre <- trimws(genre)  
+  })
+  
+  genre_data <- rbind(genre_data, data.frame(FileID = file_name, Genre = genre, stringsAsFactors = FALSE))
+}
+```
+
+## Save the results to Excel
+```{r}
+output_path <- file.path(folder_path, "LCMC_genre_list.xlsx")
+write.xlsx(genre_data, file = output_path, rowNames = FALSE)
+```
+
+# Clean data
+## removing tags in ZCTC corpus and controlling for the number of tokens
+
+### Load packages
+```{r}
+library(xml2)
+library(stringr)
+library(readr)
+```
+
+### Set the folder path
+```{r}
+folder_path <- "D:/NLPtools/ZCTC WordSmith edition"
+```
+
+## Get all .txt files
+```{r}
+txt_files <- list.files(path = folder_path, pattern = "\\.txt$", full.names = TRUE)
+```
+
+## Extract sentences and remove tags
+```{r}
+for (file in txt_files) {
+  # Extract the original file name without the extension
+  base_name <- tools::file_path_sans_ext(basename(file))
+  
+  # Set the output file name: ZCTC_A01_raw.txt
+  output_file <- file.path(folder_path, paste0(base_name, "_raw.txt"))
+  
+  # Read and parse the UTF-16 XML content
+  xml_text <- read_file(file, locale = locale(encoding = "UTF-16LE"))
+  doc <- read_xml(xml_text)
+  
+  # Extract the content of all <s> elements
+  sentences <- xml_find_all(doc, ".//s")
+  
+  # Initialize the sentence list
+  clean_sentences <- c()
+  
+  for (s in sentences) {
+    raw <- xml_text(s)  # Example: 戴维·麦克林_nrf 时_ng ...
+    cleaned <- str_replace_all(raw, "_[^\\s]+", "")  # Remove part-of-speech tags
+    cleaned <- str_squish(cleaned)  # Remove extra spaces
+    clean_sentences <- c(clean_sentences, cleaned)
+  }
+  
+  # Save to the corresponding _raw.txt file
+  writeLines(clean_sentences, output_file, useBytes = TRUE)
+  cat("Generated:", output_file, "\n")
+}
+```
+
+## Trimming ZCTC raw files
+```{r}
+library(stringr)
+library(readr)
+
+# Set the folder path
+folder_path <- "D:/NLPtools/ZCTC WordSmith edition"
+
+# Get all _raw.txt files
+raw_files <- list.files(
+  path = folder_path,
+  pattern = "_raw\\.txt$",
+  full.names = TRUE
+)
+
+# Set output folder
+output_folder <- file.path(folder_path, "clean1500")
+dir.create(output_folder, showWarnings = FALSE)
+
+# Remove old clean1500 files to avoid mixing old and new results
+old_files <- list.files(
+  path = output_folder,
+  pattern = "_clean1500\\.txt$",
+  full.names = TRUE
+)
+
+if (length(old_files) > 0) {
+  unlink(old_files)
+}
+
+# Function: merge separated English letters
+merge_letter_run <- function(run) {
+  n <- length(run)
+  
+  if (n == 1) {
+    return(run)
+  }
+  
+  is_upper <- str_detect(run, "^[A-Z]$")
+  is_lower <- str_detect(run, "^[a-z]$")
+  
+  # Example: V C -> VC
+  if (all(is_upper)) {
+    return(paste0(run, collapse = ""))
+  }
+  
+  parts <- character(0)
+  i <- 1
+  
+  while (i <= n) {
+    
+    if (is_upper[i]) {
+      
+      # Example: O r a c l e -> Oracle
+      # Example: M e n l o -> Menlo
+      if (i < n && is_lower[i + 1]) {
+        j <- i + 1
+        
+        while (j <= n && is_lower[j]) {
+          j <- j + 1
+        }
+        
+        parts <- c(parts, paste0(run[i:(j - 1)], collapse = ""))
+        i <- j
+        
+      } else {
+        
+        # Example: U S V e n t u r e -> US Venture
+        j <- i
+        
+        while (
+          j <= n &&
+          is_upper[j] &&
+          !(j < n && is_lower[j + 1])
+        ) {
+          j <- j + 1
+        }
+        
+        parts <- c(parts, paste0(run[i:(j - 1)], collapse = ""))
+        i <- j
+      }
+      
+    } else {
+      
+      # Merge lowercase letter sequences if they occur
+      j <- i
+      
+      while (j <= n && is_lower[j]) {
+        j <- j + 1
+      }
+      
+      parts <- c(parts, paste0(run[i:(j - 1)], collapse = ""))
+      i <- j
+    }
+  }
+  
+  return(parts[parts != ""])
+}
+
+# Function: scan tokens and merge separated English letters
+merge_spaced_english_letters <- function(tokens) {
+  result <- character(0)
+  i <- 1
+  n <- length(tokens)
+  
+  while (i <= n) {
+    
+    if (str_detect(tokens[i], "^[A-Za-z]$")) {
+      j <- i
+      
+      while (j <= n && str_detect(tokens[j], "^[A-Za-z]$")) {
+        j <- j + 1
+      }
+      
+      letter_run <- tokens[i:(j - 1)]
+      merged <- merge_letter_run(letter_run)
+      
+      result <- c(result, merged)
+      i <- j
+      
+    } else {
+      result <- c(result, tokens[i])
+      i <- i + 1
+    }
+  }
+  
+  return(result)
+}
+
+# Record excluded files
+excluded_files <- data.frame(
+  FileID = character(),
+  WordCountAfterCleaning = integer(),
+  stringsAsFactors = FALSE
+)
+
+# Record saved files
+saved_files <- data.frame(
+  FileID = character(),
+  WordCountBeforeTruncation = integer(),
+  FinalWordCount = integer(),
+  stringsAsFactors = FALSE
+)
+
+# Process each _raw.txt file
+for (file in raw_files) {
+  
+  # Extract file name
+  base_name <- tools::file_path_sans_ext(basename(file))
+  base_name <- str_replace(base_name, "_raw$", "")
+  
+  # Set output file name
+  output_file <- file.path(output_folder, paste0(base_name, "_clean1500.txt"))
+  
+  # Read raw text
+  text <- read_file(file, locale = locale(encoding = "UTF-8"))
+  
+  # Remove punctuation and numbers
+  text <- str_replace_all(text, "[\\p{P}\\p{N}]+", " ")
+  
+  # Remove extra spaces
+  text <- str_squish(text)
+  
+  # If the file becomes empty after cleaning, exclude it
+  if (text == "") {
+    excluded_files <- rbind(
+      excluded_files,
+      data.frame(
+        FileID = base_name,
+        WordCountAfterCleaning = 0,
+        stringsAsFactors = FALSE
+      )
+    )
+    
+    cat("Excluded:", base_name, "- 0 words after cleaning\n")
+    next
+  }
+  
+  # Split into tokens
+  tokens <- unlist(str_split(text, "\\s+"))
+  tokens <- tokens[tokens != ""]
+  
+  # Merge separated English letters
+  tokens <- merge_spaced_english_letters(tokens)
+  
+  # Remove empty tokens again
+  tokens <- tokens[tokens != ""]
+  
+  # Count words after punctuation/number removal and English-letter merging
+  word_count <- length(tokens)
+  
+  # Exclude files with fewer than 1500 words
+  if (word_count < 1500) {
+    excluded_files <- rbind(
+      excluded_files,
+      data.frame(
+        FileID = base_name,
+        WordCountAfterCleaning = word_count,
+        stringsAsFactors = FALSE
+      )
+    )
+    
+    cat("Excluded:", base_name, "-", word_count, "words after cleaning\n")
+    next
+  }
+  
+  # Keep only the first 1500 words
+  tokens_1500 <- tokens[1:1500]
+  
+  # Save cleaned 1500-word file
+  write_lines(paste(tokens_1500, collapse = " "), output_file)
+  
+  # Record saved file information
+  saved_files <- rbind(
+    saved_files,
+    data.frame(
+      FileID = base_name,
+      WordCountBeforeTruncation = word_count,
+      FinalWordCount = length(tokens_1500),
+      stringsAsFactors = FALSE
+    )
+  )
+  
+  cat("Saved:", base_name, "-", word_count, "words before truncation; 1500 words saved\n")
+}
+
+# Save records
+excluded_path <- file.path(output_folder, "excluded_files.csv")
+saved_path <- file.path(output_folder, "saved_files.csv")
+
+write_csv(excluded_files, excluded_path)
+write_csv(saved_files, saved_path)
+
+cat("\nCleaning completed.\n")
+cat("Cleaned files saved in:", output_folder, "\n")
+cat("Excluded file list saved to:", excluded_path, "\n")
+cat("Saved file list saved to:", saved_path, "\n")
+```
+
+## Check the number of tokens
+```{r}
+library(stringr)
+library(readr)
+
+output_folder <- "D:/NLPtools/ZCTC WordSmith edition/clean1500"
+
+clean_files <- list.files(
+  path = output_folder,
+  pattern = "_clean1500\\.txt$",
+  full.names = TRUE
+)
+
+check_counts <- data.frame(
+  FileID = character(),
+  WordCount = integer(),
+  stringsAsFactors = FALSE
+)
+
+for (file in clean_files) {
+  text <- read_file(file, locale = locale(encoding = "UTF-8"))
+  tokens <- unlist(str_split(str_squish(text), "\\s+"))
+  tokens <- tokens[tokens != ""]
+  
+  check_counts <- rbind(
+    check_counts,
+    data.frame(
+      FileID = basename(file),
+      WordCount = length(tokens),
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+print(check_counts)
+
+# Show files that are not exactly 1500 words
+problem_files <- check_counts[check_counts$WordCount != 1500, ]
+print(problem_files)
+```
+
+## removing tags in LCMC corpus and controlling for the number of tokens
+
+### Load packages
+```{r}
+library(xml2)
+library(stringr)
+library(readr)
+```
+
+### Set the folder path
+```{r}
+folder_path <- "D:/NLPtools/LCMCv2 WordSmith edition"
+```
+
+## Get all .txt files
+```{r}
+txt_files <- list.files(path = folder_path, pattern = "\\.txt$", full.names = TRUE)
+```
+
+## Extract sentences and remove tags
+```{r}
+for (file in txt_files) {
+  # Extract the original file name without the extension
+  base_name <- tools::file_path_sans_ext(basename(file))
+  
+  # Set the output file name: ZCTC_A01_raw.txt
+  output_file <- file.path(folder_path, paste0(base_name, "_raw.txt"))
+  
+  # Read and parse the UTF-16 XML content
+  xml_text <- read_file(file, locale = locale(encoding = "UTF-16LE"))
+  doc <- read_xml(xml_text)
+  
+  # Extract the content of all <s> elements
+  sentences <- xml_find_all(doc, ".//s")
+  
+  # Initialize the sentence list
+  clean_sentences <- c()
+  
+  for (s in sentences) {
+    raw <- xml_text(s)  # Example: 戴维·麦克林_nrf 时_ng ...
+    cleaned <- str_replace_all(raw, "_[^\\s]+", "")  # Remove part-of-speech tags
+    cleaned <- str_squish(cleaned)  # Remove extra spaces
+    clean_sentences <- c(clean_sentences, cleaned)
+  }
+  
+  # Save to the corresponding _raw.txt file
+  writeLines(clean_sentences, output_file, useBytes = TRUE)
+  cat("Generated:", output_file, "\n")
+}
+```
+## Trimming LCMC raw files
+```{r}
+library(stringr)
+library(readr)
+
+# Set the folder path for LCMC
+folder_path <- "D:/NLPtools/LCMCv2 WordSmith edition"
+
+# Get all _raw.txt files
+raw_files <- list.files(
+  path = folder_path,
+  pattern = "_raw\\.txt$",
+  full.names = TRUE
+)
+
+cat("Number of _raw.txt files found:", length(raw_files), "\n")
+
+# Set output folder
+output_folder <- file.path(folder_path, "clean1500")
+dir.create(output_folder, showWarnings = FALSE)
+
+# Remove old clean1500 files to avoid mixing old and new results
+old_files <- list.files(
+  path = output_folder,
+  pattern = "_clean1500\\.txt$",
+  full.names = TRUE
+)
+
+if (length(old_files) > 0) {
+  unlink(old_files)
+}
+
+# Function: merge separated English letters
+merge_letter_run <- function(run) {
+  n <- length(run)
+  
+  if (n == 1) {
+    return(run)
+  }
+  
+  is_upper <- str_detect(run, "^[A-Z]$")
+  is_lower <- str_detect(run, "^[a-z]$")
+  
+  # Example: V C -> VC
+  if (all(is_upper)) {
+    return(paste0(run, collapse = ""))
+  }
+  
+  parts <- character(0)
+  i <- 1
+  
+  while (i <= n) {
+    
+    if (is_upper[i]) {
+      
+      # Example: O r a c l e -> Oracle
+      # Example: M e n l o -> Menlo
+      if (i < n && is_lower[i + 1]) {
+        j <- i + 1
+        
+        while (j <= n && is_lower[j]) {
+          j <- j + 1
+        }
+        
+        parts <- c(parts, paste0(run[i:(j - 1)], collapse = ""))
+        i <- j
+        
+      } else {
+        
+        # Example: U S V e n t u r e -> US Venture
+        j <- i
+        
+        while (
+          j <= n &&
+          is_upper[j] &&
+          !(j < n && is_lower[j + 1])
+        ) {
+          j <- j + 1
+        }
+        
+        parts <- c(parts, paste0(run[i:(j - 1)], collapse = ""))
+        i <- j
+      }
+      
+    } else {
+      
+      # Merge lowercase letter sequences if they occur
+      j <- i
+      
+      while (j <= n && is_lower[j]) {
+        j <- j + 1
+      }
+      
+      parts <- c(parts, paste0(run[i:(j - 1)], collapse = ""))
+      i <- j
+    }
+  }
+  
+  return(parts[parts != ""])
+}
+
+# Function: scan tokens and merge separated English letters
+merge_spaced_english_letters <- function(tokens) {
+  result <- character(0)
+  i <- 1
+  n <- length(tokens)
+  
+  while (i <= n) {
+    
+    if (str_detect(tokens[i], "^[A-Za-z]$")) {
+      j <- i
+      
+      while (j <= n && str_detect(tokens[j], "^[A-Za-z]$")) {
+        j <- j + 1
+      }
+      
+      letter_run <- tokens[i:(j - 1)]
+      merged <- merge_letter_run(letter_run)
+      
+      result <- c(result, merged)
+      i <- j
+      
+    } else {
+      result <- c(result, tokens[i])
+      i <- i + 1
+    }
+  }
+  
+  return(result)
+}
+
+# Record excluded files
+excluded_files <- data.frame(
+  FileID = character(),
+  WordCountAfterCleaning = integer(),
+  stringsAsFactors = FALSE
+)
+
+# Record saved files
+saved_files <- data.frame(
+  FileID = character(),
+  WordCountBeforeTruncation = integer(),
+  FinalWordCount = integer(),
+  stringsAsFactors = FALSE
+)
+
+# Stop if no _raw.txt files are found
+if (length(raw_files) == 0) {
+  stop("No _raw.txt files were found. Please check the LCMC folder path.")
+}
+
+# Process each _raw.txt file
+for (file in raw_files) {
+  
+  # Extract file name
+  base_name <- tools::file_path_sans_ext(basename(file))
+  base_name <- str_replace(base_name, "_raw$", "")
+  
+  # Set output file name
+  output_file <- file.path(output_folder, paste0(base_name, "_clean1500.txt"))
+  
+  # Read raw text
+  text <- read_file(file, locale = locale(encoding = "UTF-8"))
+  
+  # Remove punctuation and numbers
+  text <- str_replace_all(text, "[\\p{P}\\p{N}]+", " ")
+  
+  # Remove extra spaces
+  text <- str_squish(text)
+  
+  # Exclude empty files
+  if (text == "") {
+    excluded_files <- rbind(
+      excluded_files,
+      data.frame(
+        FileID = base_name,
+        WordCountAfterCleaning = 0,
+        stringsAsFactors = FALSE
+      )
+    )
+    
+    cat("Excluded:", base_name, "- 0 words after cleaning\n")
+    next
+  }
+  
+  # Split into tokens
+  tokens <- unlist(str_split(text, "\\s+"))
+  tokens <- tokens[tokens != ""]
+  
+  # Merge separated English letters
+  tokens <- merge_spaced_english_letters(tokens)
+  
+  # Remove empty tokens again
+  tokens <- tokens[tokens != ""]
+  
+  # Count words after cleaning
+  word_count <- length(tokens)
+  
+  # Exclude files with fewer than 1500 words
+  if (word_count < 1500) {
+    excluded_files <- rbind(
+      excluded_files,
+      data.frame(
+        FileID = base_name,
+        WordCountAfterCleaning = word_count,
+        stringsAsFactors = FALSE
+      )
+    )
+    
+    cat("Excluded:", base_name, "-", word_count, "words after cleaning\n")
+    next
+  }
+  
+  # Keep only the first 1500 words
+  tokens_1500 <- tokens[1:1500]
+  
+  # Save cleaned 1500-word file
+  write_lines(paste(tokens_1500, collapse = " "), output_file)
+  
+  # Record saved file information
+  saved_files <- rbind(
+    saved_files,
+    data.frame(
+      FileID = base_name,
+      WordCountBeforeTruncation = word_count,
+      FinalWordCount = length(tokens_1500),
+      stringsAsFactors = FALSE
+    )
+  )
+  
+  cat("Saved:", base_name, "-", word_count, "words before truncation; 1500 words saved\n")
+}
+
+# Save records
+excluded_path <- file.path(output_folder, "excluded_files.csv")
+saved_path <- file.path(output_folder, "saved_files.csv")
+
+write_csv(excluded_files, excluded_path)
+write_csv(saved_files, saved_path)
+
+cat("\nCleaning completed.\n")
+cat("Cleaned files saved in:", output_folder, "\n")
+cat("Excluded file list saved to:", excluded_path, "\n")
+cat("Saved file list saved to:", saved_path, "\n")
+```
+## Check the number of tokens
+```{r}
+library(stringr)
+library(readr)
+
+output_folder <- "D:/NLPtools/LCMCv2 WordSmith edition/clean1500"
+
+clean_files <- list.files(
+  path = output_folder,
+  pattern = "_clean1500\\.txt$",
+  full.names = TRUE
+)
+
+check_counts <- data.frame(
+  FileID = character(),
+  WordCount = integer(),
+  stringsAsFactors = FALSE
+)
+
+for (file in clean_files) {
+  text <- read_file(file, locale = locale(encoding = "UTF-8"))
+  tokens <- unlist(str_split(str_squish(text), "\\s+"))
+  tokens <- tokens[tokens != ""]
+  
+  check_counts <- rbind(
+    check_counts,
+    data.frame(
+      FileID = basename(file),
+      WordCount = length(tokens),
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+print(check_counts)
+
+# Show files that are not exactly 1500 words
+problem_files <- check_counts[check_counts$WordCount != 1500, ]
+print(problem_files)
+```
+
+### ZCTC word entropy
+```{r}
+library(quanteda)
+library(quanteda.textstats)
+library(openxlsx)
+library(stringr)
+
+# Set the folder path to the clean1500 folder
+folder_path <- "D:/NLPtools/ZCTC WordSmith edition/clean1500"
+
+# Get all .txt files in the clean1500 folder
+txt_files <- list.files(
+  path = folder_path,
+  pattern = "\\.txt$",
+  full.names = TRUE
+)
+
+# Initialize the result data frame
+entropy_results <- data.frame(
+  FileID = character(),
+  WRDentropy = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through each cleaned txt file
+for (file in txt_files) {
+  
+  # Extract file ID
+  # Example: ZCTC_A01_clean1500.txt -> ZCTC_A01
+  file_id <- basename(file)
+  file_id <- str_replace(file_id, "_clean1500\\.txt$", "")
+  file_id <- str_replace(file_id, "\\.txt$", "")
+  
+  # Read text content
+  text <- readLines(file, warn = FALSE, encoding = "UTF-8")
+  text <- paste(text, collapse = " ")
+  
+  # Create corpus
+  corpus_obj <- corpus(text)
+  
+  # Tokenize the text
+  toks <- tokens(corpus_obj, remove_punct = TRUE)
+  
+  # Create document-feature matrix
+  dfmat <- dfm(toks)
+  
+  # Calculate word entropy
+  entropy_val <- textstat_entropy(dfmat)$entropy
+  
+  # Add result
+  entropy_results <- rbind(
+    entropy_results,
+    data.frame(
+      FileID = file_id,
+      WRDentropy = entropy_val,
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+# Save results to Excel
+output_path <- file.path(folder_path, "ZCTC_clean1500_WRDentropy_results.xlsx")
+
+write.xlsx(
+  entropy_results,
+  file = output_path,
+  rowNames = FALSE
+)
+
+cat("WRDentropy calculation completed. Results saved to:", output_path, "\n")
+```
+
+### LCMC word entropy
+```{r}
+library(quanteda)
+library(quanteda.textstats)
+library(openxlsx)
+library(stringr)
+
+# Set the folder path to the LCMC clean1500 folder
+folder_path <- "D:/NLPtools/LCMCv2 WordSmith edition/clean1500"
+
+# Get all .txt files in the clean1500 folder
+txt_files <- list.files(
+  path = folder_path,
+  pattern = "\\.txt$",
+  full.names = TRUE
+)
+
+# Initialize the result data frame
+entropy_results <- data.frame(
+  FileID = character(),
+  WRDentropy = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through each cleaned txt file
+for (file in txt_files) {
+  
+  # Extract file ID
+  # Example: LCMC_A01_clean1500.txt -> LCMC_A01
+  file_id <- basename(file)
+  file_id <- str_replace(file_id, "_clean1500\\.txt$", "")
+  file_id <- str_replace(file_id, "\\.txt$", "")
+  
+  # Read text content
+  text <- readLines(file, warn = FALSE, encoding = "UTF-8")
+  text <- paste(text, collapse = " ")
+  
+  # Create corpus
+  corpus_obj <- corpus(text)
+  
+  # Tokenize the text
+  toks <- tokens(corpus_obj, remove_punct = TRUE)
+  
+  # Create document-feature matrix
+  dfmat <- dfm(toks)
+  
+  # Calculate word entropy
+  entropy_val <- textstat_entropy(dfmat)$entropy
+  
+  # Add result
+  entropy_results <- rbind(
+    entropy_results,
+    data.frame(
+      FileID = file_id,
+      WRDentropy = entropy_val,
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+# Save results to Excel
+output_path <- file.path(folder_path, "LCMC_clean1500_WRDentropy_results.xlsx")
+
+write.xlsx(
+  entropy_results,
+  file = output_path,
+  rowNames = FALSE
+)
+
+cat("LCMC WRDentropy calculation completed. Results saved to:", output_path, "\n")
+```
+
+# ZCTC POS
+## Cleaning ZCTC for pos tags
+```{r}
+library(xml2)
+library(stringr)
+library(readr)
+library(openxlsx)
+
+# Set the folder path
+folder_path <- "D:/NLPtools/ZCTC WordSmith edition"
+
+# Get original .txt XML files
+txt_files <- list.files(
+  path = folder_path,
+  pattern = "\\.txt$",
+  full.names = TRUE
+)
+
+# Exclude files generated in previous steps
+txt_files <- txt_files[
+  !str_detect(txt_files, "_raw\\.txt$") &
+  !str_detect(txt_files, "_clean1500\\.txt$")
+]
+
+# Set output folder
+output_folder <- file.path(folder_path, "pos1500")
+dir.create(output_folder, showWarnings = FALSE)
+
+# Remove old POS output files
+old_files <- list.files(
+  path = output_folder,
+  pattern = "_pos1500\\.txt$",
+  full.names = TRUE
+)
+
+if (length(old_files) > 0) {
+  unlink(old_files)
+}
+
+# Create records
+saved_files <- data.frame(
+  FileID = character(),
+  POSTagCountBeforeTruncation = integer(),
+  FinalPOSTagCount = integer(),
+  stringsAsFactors = FALSE
+)
+
+excluded_files <- data.frame(
+  FileID = character(),
+  POSTagCount = integer(),
+  Reason = character(),
+  stringsAsFactors = FALSE
+)
+
+# Process each file
+for (file in txt_files) {
+  
+  # Extract file ID
+  file_id <- tools::file_path_sans_ext(basename(file))
+  
+  # Set output file name
+  output_file <- file.path(output_folder, paste0(file_id, "_pos1500.txt"))
+  
+  # Read and parse UTF-16 XML content
+  xml_text_content <- read_file(file, locale = locale(encoding = "UTF-16LE"))
+  
+  doc <- tryCatch(
+    read_xml(xml_text_content),
+    error = function(e) NULL
+  )
+  
+  if (is.null(doc)) {
+    excluded_files <- rbind(
+      excluded_files,
+      data.frame(
+        FileID = file_id,
+        POSTagCount = 0,
+        Reason = "XML parsing failed",
+        stringsAsFactors = FALSE
+      )
+    )
+    
+    cat("Excluded:", file_id, "- XML parsing failed\n")
+    next
+  }
+  
+  # Extract all <s> elements
+  sentences <- xml_find_all(doc, ".//s")
+  
+  # Initialize POS tag vector
+  pos_tags <- c()
+  
+  for (s in sentences) {
+    
+    # Extract sentence text
+    raw <- xml_text(s)
+    
+    # Split sentence into word_POS tokens
+    tokens <- unlist(str_split(str_squish(raw), "\\s+"))
+    tokens <- tokens[tokens != ""]
+    
+    # Process each token
+    for (tok in tokens) {
+      
+      # Keep only tokens containing an underscore
+      if (!str_detect(tok, "_")) {
+        next
+      }
+      
+      # Extract word and POS tag
+      word <- str_replace(tok, "_[^_]+$", "")
+      pos <- str_extract(tok, "(?<=_)[^_\\s]+$")
+      
+      # Remove punctuation tokens
+      if (str_detect(word, "^[\\p{P}]+$")) {
+        next
+      }
+      
+      # Remove empty POS tags
+      if (is.na(pos) || pos == "") {
+        next
+      }
+      
+      # Keep POS tag
+      pos_tags <- c(pos_tags, pos)
+    }
+  }
+  
+  # Count POS tags
+  pos_count <- length(pos_tags)
+  
+  # Exclude files with fewer than 1500 POS tags
+  if (pos_count < 1500) {
+    excluded_files <- rbind(
+      excluded_files,
+      data.frame(
+        FileID = file_id,
+        POSTagCount = pos_count,
+        Reason = "Fewer than 1500 POS tags",
+        stringsAsFactors = FALSE
+      )
+    )
+    
+    cat("Excluded:", file_id, "-", pos_count, "POS tags\n")
+    next
+  }
+  
+  # Keep only the first 1500 POS tags
+  pos_tags_1500 <- pos_tags[1:1500]
+  
+  # Save POS tags
+  write_lines(paste(pos_tags_1500, collapse = " "), output_file)
+  
+  # Record saved files
+  saved_files <- rbind(
+    saved_files,
+    data.frame(
+      FileID = file_id,
+      POSTagCountBeforeTruncation = pos_count,
+      FinalPOSTagCount = length(pos_tags_1500),
+      stringsAsFactors = FALSE
+    )
+  )
+  
+  cat("Saved:", file_id, "-", pos_count, "POS tags before truncation; 1500 POS tags saved\n")
+}
+
+# Save records
+saved_path <- file.path(output_folder, "ZCTC_saved_pos1500_files.xlsx")
+excluded_path <- file.path(output_folder, "ZCTC_excluded_pos_files.xlsx")
+
+write.xlsx(saved_files, file = saved_path, rowNames = FALSE)
+write.xlsx(excluded_files, file = excluded_path, rowNames = FALSE)
+
+cat("\nPOS extraction completed.\n")
+cat("POS files saved in:", output_folder, "\n")
+cat("Saved file record:", saved_path, "\n")
+cat("Excluded file record:", excluded_path, "\n")
+```
+## Check for the number of tokens
+```{r}
+library(stringr)
+library(readr)
+
+# Set the POS output folder
+output_folder <- "D:/NLPtools/ZCTC WordSmith edition/pos1500"
+
+# Get all POS 1500 txt files
+pos_files <- list.files(
+  path = output_folder,
+  pattern = "_pos1500\\.txt$",
+  full.names = TRUE
+)
+
+# Initialize checking result data frame
+check_counts <- data.frame(
+  FileID = character(),
+  POSTagCount = integer(),
+  stringsAsFactors = FALSE
+)
+
+# Check each POS file
+for (file in pos_files) {
+  
+  text <- read_file(file, locale = locale(encoding = "UTF-8"))
+  
+  # Split POS tags by spaces
+  pos_tags <- unlist(str_split(str_squish(text), "\\s+"))
+  pos_tags <- pos_tags[pos_tags != ""]
+  
+  check_counts <- rbind(
+    check_counts,
+    data.frame(
+      FileID = basename(file),
+      POSTagCount = length(pos_tags),
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+# Print all checking results
+print(check_counts)
+
+# Show files that are not exactly 1500 POS tags
+problem_files <- check_counts[check_counts$POSTagCount != 1500, ]
+
+print(problem_files)
+```
+
+## ZCTC POS entropy
+```{r}
+library(quanteda)
+library(quanteda.textstats)
+library(openxlsx)
+library(stringr)
+
+# Set the POS folder path
+folder_path <- "D:/NLPtools/ZCTC WordSmith edition/pos1500"
+
+# Get all POS 1500 txt files
+pos_files <- list.files(
+  path = folder_path,
+  pattern = "_pos1500\\.txt$",
+  full.names = TRUE
+)
+
+# Initialize result data frame
+entropy_results <- data.frame(
+  FileID = character(),
+  POSentropy = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through each POS file
+for (file in pos_files) {
+  
+  # Extract file ID
+  # Example: ZCTC_A01_pos1500.txt -> ZCTC_A01
+  file_id <- basename(file)
+  file_id <- str_replace(file_id, "_pos1500\\.txt$", "")
+  
+  # Read POS tag sequence
+  text <- readLines(file, warn = FALSE, encoding = "UTF-8")
+  text <- paste(text, collapse = " ")
+  
+  # Create corpus
+  corpus_obj <- corpus(text)
+  
+  # Tokenize POS tags
+  toks <- tokens(corpus_obj, remove_punct = FALSE)
+  
+  # Create document-feature matrix
+  dfmat <- dfm(toks)
+  
+  # Calculate POS entropy
+  entropy_val <- textstat_entropy(dfmat)$entropy
+  
+  # Add result
+  entropy_results <- rbind(
+    entropy_results,
+    data.frame(
+      FileID = file_id,
+      POSentropy = entropy_val,
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+# Save results to Excel
+output_path <- file.path(
+  folder_path,
+  "ZCTC_POSentropy_results.xlsx"
+)
+
+write.xlsx(
+  entropy_results,
+  file = output_path,
+  rowNames = FALSE
+)
+
+cat("ZCTC POS entropy calculation completed. Results saved to:", output_path, "\n")
+```
+
+# LCMC POS
+## Cleaning LCMC for pos tags
+```{r}
+library(xml2)
+library(stringr)
+library(readr)
+library(openxlsx)
+
+# Set the folder path
+folder_path <- "D:/NLPtools/LCMCv2 WordSmith edition"
+
+# Get original .txt XML files
+txt_files <- list.files(
+  path = folder_path,
+  pattern = "\\.txt$",
+  full.names = TRUE
+)
+
+# Exclude files generated in previous steps
+txt_files <- txt_files[
+  !str_detect(txt_files, "_raw\\.txt$") &
+  !str_detect(txt_files, "_clean1500\\.txt$") &
+  !str_detect(txt_files, "_pos1500\\.txt$")
+]
+
+cat("Number of original txt files found:", length(txt_files), "\n")
+
+# Set output folder
+output_folder <- file.path(folder_path, "pos1500")
+dir.create(output_folder, showWarnings = FALSE)
+
+# Remove old POS output files
+old_files <- list.files(
+  path = output_folder,
+  pattern = "_pos1500\\.txt$",
+  full.names = TRUE
+)
+
+if (length(old_files) > 0) {
+  unlink(old_files)
+}
+
+# Record saved files
+saved_files <- data.frame(
+  FileID = character(),
+  POSTagCountBeforeTruncation = integer(),
+  FinalPOSTagCount = integer(),
+  stringsAsFactors = FALSE
+)
+
+# Record excluded files
+excluded_files <- data.frame(
+  FileID = character(),
+  POSTagCount = integer(),
+  Reason = character(),
+  stringsAsFactors = FALSE
+)
+
+# Process each original txt file
+for (file in txt_files) {
+  
+  # Extract file ID
+  file_id <- tools::file_path_sans_ext(basename(file))
+  
+  # Set output file name
+  output_file <- file.path(output_folder, paste0(file_id, "_pos1500.txt"))
+  
+  # Read and parse UTF-16 XML content
+  xml_text_content <- read_file(file, locale = locale(encoding = "UTF-16LE"))
+  
+  doc <- tryCatch(
+    read_xml(xml_text_content),
+    error = function(e) NULL
+  )
+  
+  if (is.null(doc)) {
+    excluded_files <- rbind(
+      excluded_files,
+      data.frame(
+        FileID = file_id,
+        POSTagCount = 0,
+        Reason = "XML parsing failed",
+        stringsAsFactors = FALSE
+      )
+    )
+    
+    cat("Excluded:", file_id, "- XML parsing failed\n")
+    next
+  }
+  
+  # Extract all <s> elements
+  sentences <- xml_find_all(doc, ".//s")
+  
+  # Initialize POS tag vector
+  pos_tags <- c()
+  
+  for (s in sentences) {
+    
+    # Extract sentence text
+    raw <- xml_text(s)
+    
+    # Split sentence into word_POS tokens
+    tokens <- unlist(str_split(str_squish(raw), "\\s+"))
+    tokens <- tokens[tokens != ""]
+    
+    for (tok in tokens) {
+      
+      # Keep only tokens containing an underscore
+      if (!str_detect(tok, "_")) {
+        next
+      }
+      
+      # Extract word and POS tag based on the last underscore
+      word <- str_replace(tok, "_[^_]+$", "")
+      pos <- str_extract(tok, "(?<=_)[^_\\s]+$")
+      
+      # Remove invalid POS tags
+      if (is.na(pos) || pos == "") {
+        next
+      }
+      
+      # Remove punctuation tokens, such as ，_w and 。_w
+      if (str_detect(word, "^[\\p{P}]+$")) {
+        next
+      }
+      
+      # Keep POS tag
+      pos_tags <- c(pos_tags, pos)
+    }
+  }
+  
+  # Count POS tags after removing punctuation
+  pos_count <- length(pos_tags)
+  
+  # Exclude files with fewer than 1500 POS tags
+  if (pos_count < 1500) {
+    excluded_files <- rbind(
+      excluded_files,
+      data.frame(
+        FileID = file_id,
+        POSTagCount = pos_count,
+        Reason = "Fewer than 1500 POS tags",
+        stringsAsFactors = FALSE
+      )
+    )
+    
+    cat("Excluded:", file_id, "-", pos_count, "POS tags\n")
+    next
+  }
+  
+  # Keep only the first 1500 POS tags
+  pos_tags_1500 <- pos_tags[1:1500]
+  
+  # Save POS tags
+  write_lines(paste(pos_tags_1500, collapse = " "), output_file)
+  
+  # Record saved files
+  saved_files <- rbind(
+    saved_files,
+    data.frame(
+      FileID = file_id,
+      POSTagCountBeforeTruncation = pos_count,
+      FinalPOSTagCount = length(pos_tags_1500),
+      stringsAsFactors = FALSE
+    )
+  )
+  
+  cat("Saved:", file_id, "-", pos_count, "POS tags before truncation; 1500 POS tags saved\n")
+}
+
+# Save records
+saved_path <- file.path(output_folder, "LCMC_saved_pos1500_files.xlsx")
+excluded_path <- file.path(output_folder, "LCMC_excluded_pos_files.xlsx")
+
+write.xlsx(saved_files, file = saved_path, rowNames = FALSE)
+write.xlsx(excluded_files, file = excluded_path, rowNames = FALSE)
+
+cat("\nPOS extraction completed.\n")
+cat("POS files saved in:", output_folder, "\n")
+cat("Saved file record:", saved_path, "\n")
+cat("Excluded file record:", excluded_path, "\n")
+```
+## Check for the number of tokens
+```{r}
+library(stringr)
+library(readr)
+
+# Set the POS output folder
+output_folder <- "D:/NLPtools/LCMCv2 WordSmith edition/pos1500"
+
+# Get all POS 1500 txt files
+pos_files <- list.files(
+  path = output_folder,
+  pattern = "_pos1500\\.txt$",
+  full.names = TRUE
+)
+
+# Initialize checking result data frame
+check_counts <- data.frame(
+  FileID = character(),
+  POSTagCount = integer(),
+  stringsAsFactors = FALSE
+)
+
+# Check each POS file
+for (file in pos_files) {
+  
+  text <- read_file(file, locale = locale(encoding = "UTF-8"))
+  
+  # Split POS tags by spaces
+  pos_tags <- unlist(str_split(str_squish(text), "\\s+"))
+  pos_tags <- pos_tags[pos_tags != ""]
+  
+  check_counts <- rbind(
+    check_counts,
+    data.frame(
+      FileID = basename(file),
+      POSTagCount = length(pos_tags),
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+# Print all checking results
+print(check_counts)
+
+# Show files that are not exactly 1500 POS tags
+problem_files <- check_counts[check_counts$POSTagCount != 1500, ]
+
+print(problem_files)
+```
+
+## LCMC POS entropy
+```{r}
+library(quanteda)
+library(quanteda.textstats)
+library(openxlsx)
+library(stringr)
+
+# Set the POS folder path
+folder_path <- "D:/NLPtools/LCMCv2 WordSmith edition/pos1500"
+
+# Get all POS 1500 txt files
+pos_files <- list.files(
+  path = folder_path,
+  pattern = "_pos1500\\.txt$",
+  full.names = TRUE
+)
+
+# Initialize result data frame
+entropy_results <- data.frame(
+  FileID = character(),
+  POSentropy = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through each POS file
+for (file in pos_files) {
+  
+  # Extract file ID
+  file_id <- basename(file)
+  file_id <- str_replace(file_id, "_pos1500\\.txt$", "")
+  
+  # Read POS tag sequence
+  text <- readLines(file, warn = FALSE, encoding = "UTF-8")
+  text <- paste(text, collapse = " ")
+  
+  # Create corpus
+  corpus_obj <- corpus(text)
+  
+  # Tokenize POS tags
+  toks <- tokens(corpus_obj, remove_punct = FALSE)
+  
+  # Create document-feature matrix
+  dfmat <- dfm(toks)
+  
+  # Calculate POS entropy
+  entropy_val <- textstat_entropy(dfmat)$entropy
+  
+  # Add result
+  entropy_results <- rbind(
+    entropy_results,
+    data.frame(
+      FileID = file_id,
+      POSentropy = entropy_val,
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+# Save results to Excel
+output_path <- file.path(folder_path, "LCMC_POSentropy_results.xlsx")
+
+write.xlsx(
+  entropy_results,
+  file = output_path,
+  rowNames = FALSE
+)
+
+cat("LCMC POS entropy calculation completed. Results saved to:", output_path, "\n")
+```
+
+# Merge datasets
+```{r}
+library(readxl)
+library(dplyr)
+library(openxlsx)
+
+# Set paths
+main_path <- "D:/NLPtools"
+
+zctc_path <- "D:/NLPtools/ZCTC WordSmith edition"
+lcmc_path <- "D:/NLPtools/LCMCv2 WordSmith edition"
+
+zctc_clean_path <- file.path(zctc_path, "clean1500")
+lcmc_clean_path <- file.path(lcmc_path, "clean1500")
+
+zctc_pos_path <- file.path(zctc_path, "pos1500")
+lcmc_pos_path <- file.path(lcmc_path, "pos1500")
+
+# Read ZCTC files
+zctc_genre <- read_excel(file.path(zctc_path, "ZCTC_genre_list.xlsx"))
+zctc_wrd_entropy <- read_excel(file.path(zctc_clean_path, "ZCTC_clean1500_WRDentropy_results.xlsx"))
+zctc_pos_entropy <- read_excel(file.path(zctc_pos_path, "ZCTC_POSentropy_results.xlsx"))
+
+# Read LCMC files
+lcmc_genre <- read_excel(file.path(lcmc_path, "LCMC_genre_list.xlsx"))
+lcmc_wrd_entropy <- read_excel(file.path(lcmc_clean_path, "LCMC_clean1500_WRDentropy_results.xlsx"))
+lcmc_pos_entropy <- read_excel(file.path(lcmc_pos_path, "LCMC_POSentropy_results.xlsx"))
+
+# Keep required columns and make sure FileID is character
+zctc_genre <- zctc_genre %>%
+  select(FileID, Genre) %>%
+  mutate(FileID = as.character(FileID))
+
+zctc_wrd_entropy <- zctc_wrd_entropy %>%
+  select(FileID, WRDentropy) %>%
+  mutate(FileID = as.character(FileID))
+
+zctc_pos_entropy <- zctc_pos_entropy %>%
+  select(FileID, POSentropy) %>%
+  mutate(FileID = as.character(FileID))
+
+lcmc_genre <- lcmc_genre %>%
+  select(FileID, Genre) %>%
+  mutate(FileID = as.character(FileID))
+
+lcmc_wrd_entropy <- lcmc_wrd_entropy %>%
+  select(FileID, WRDentropy) %>%
+  mutate(FileID = as.character(FileID))
+
+lcmc_pos_entropy <- lcmc_pos_entropy %>%
+  select(FileID, POSentropy) %>%
+  mutate(FileID = as.character(FileID))
+
+# Merge ZCTC data: keep only FileIDs appearing in all three ZCTC tables
+zctc_merged <- zctc_genre %>%
+  inner_join(zctc_wrd_entropy, by = "FileID") %>%
+  inner_join(zctc_pos_entropy, by = "FileID") %>%
+  select(FileID, Genre, WRDentropy, POSentropy)
+
+# Merge LCMC data: keep only FileIDs appearing in all three LCMC tables
+lcmc_merged <- lcmc_genre %>%
+  inner_join(lcmc_wrd_entropy, by = "FileID") %>%
+  inner_join(lcmc_pos_entropy, by = "FileID") %>%
+  select(FileID, Genre, WRDentropy, POSentropy)
+
+# Combine ZCTC and LCMC
+final_table <- bind_rows(zctc_merged, lcmc_merged)
+
+# Remove any rows with missing values, just in case
+final_table <- final_table %>%
+  filter(
+    !is.na(FileID),
+    !is.na(Genre),
+    !is.na(WRDentropy),
+    !is.na(POSentropy)
+  )
+
+# Export to Excel
+output_path <- file.path(main_path, "LCMC_ZCTC_corpus.xlsx")
+
+write.xlsx(
+  final_table,
+  file = output_path,
+  rowNames = FALSE
+)
+
+cat("Merge completed. Results saved to:", output_path, "\n")
+cat("Final number of rows:", nrow(final_table), "\n")
+```
+## Merge genres
+```{r}
+##generate new data
+library(readxl)
+library(dplyr)
+library(openxlsx)
+library(stringr)
+
+# 读取原始数据
+data <- read_excel("D:/NLPtools/LCMC_ZCTC_corpus.xlsx")
+
+# 添加 Corpus 列
+data <- data %>%
+  mutate(Corpus = case_when(
+    str_detect(FileID, "ZCTC") ~ "ZCTC",
+    str_detect(FileID, "LCMC") ~ "LCMC",
+    TRUE ~ "Unknown"
+  ))
+
+# 标准化 Genre 列
+data <- data %>%
+  mutate(Genre = str_trim(Genre),
+         Genre = case_when(
+           Genre == "Academic prose" ~ "Academic prose",
+           Genre %in% c("News reportage", "News editorial", "News review") ~ "Press",
+           Genre %in% c("Religious", "Skill/trade/hobby", "Popular lore", 
+                        "Biography and essay", "Miscellaneous (official document, report ect)") ~ "General Prose",
+           TRUE ~ "Fiction"
+         ))
+
+# 保存结果
+output_path <- "D:/NLPtools/LCMC_ZCTC_corpus_cleaned.xlsx"
+write.xlsx(data, file = output_path, rowNames = FALSE)
+```
+
