@@ -1,0 +1,126 @@
+---
+title: "anaphora"
+author: "Jiajun"
+date: "2025-04-14"
+output: html_document
+---
+
+
+```{r}
+library(partykit)
+library(party)
+library(tidyverse)
+anaphora <- read.table(file=file.choose(), header = TRUE)
+```
+
+```{r}
+anaphora$TextType <- factor(anaphora$TextType)
+anaphora$Animacy <- factor(anaphora$Animacy)
+anaphora$AnteSynp <- factor(anaphora$AnteSynp)
+anaphora$AnapType <- factor(anaphora$AnapType)
+```
+
+```{r}
+str(anaphora)
+```
+
+```{r}
+summary(anaphora)
+```
+
+```{r}
+set.seed (129)
+
+anaphora.ctree <- ctree(AnapType ~ PotlRefe + RefdPara + RefdSent + RefdClau + TextType + Animacy + AnteSynp, data = anaphora,control = ctree_control(testtype = "MonteCarlo", mincriterion = 0.95,minbucket = 15))
+```
+
+```{r}
+plot(anaphora.ctree)
+```
+
+```{r}
+plot(anaphora.ctree,type="simple")
+```
+
+```{r}
+table(predict(anaphora.ctree),anaphora$AnapType)
+```
+
+```{r}
+library(Hmisc)
+```
+
+
+```{r}
+data.ctree.pred <- unlist(predict(anaphora.ctree,type="prob"))[c(FALSE, TRUE)]
+```
+
+
+```{r}
+somers2(data.ctree.pred,as.numeric(anaphora$AnapType)-1)
+```
+
+forests of conditional inference trees
+```{r}
+set.seed (129)
+
+anaphora.cif <- cforest(AnapType ~ PotlRefe + RefdPara + RefdSent + RefdClau + TextType + Animacy + AnteSynp, 
+                        data=anaphora, 
+                        controls=cforest_unbiased(ntree=1000, mtry=3))
+```
+
+```{r}
+pred.cif.oob <- predict(anaphora.cif, OOB = TRUE)
+table(pred.cif.oob, anaphora$AnapType)
+```
+
+```{r}
+library(partykit)
+library(party)
+
+data.cif.pred <- unlist(predict(anaphora.cif,type="prob",OOB = TRUE))[c(FALSE, TRUE)]
+
+
+somers2(data.cif.pred,as.numeric(anaphora$AnapType)-1)
+```
+
+```{r}
+importance.scores <- varimp(anaphora.cif, conditional=TRUE)
+```
+
+
+```{r}
+dotchart(sort(importance.scores), main = "Conditional Variable Importance Scores")
+```
+
+
+```{r}
+#install.packages("pdp")
+library(pdp)
+```
+
+```{r}
+pd.AnteSynp <- partial(object=anaphora.cif, 
+                       pred.var="AnteSynp",
+                       prob=TRUE)
+plotPartial(object=pd.AnteSynp, 
+            main="Partial Dependence on AnteSynp",
+            ylab="Non-Zero")
+```
+
+```{r}
+pd.RefdSent <- partial(object=anaphora.cif, 
+                       pred.var="RefdSent",
+                       prob=TRUE)
+plotPartial(object=pd.RefdSent, 
+            main="Partial Dependence on RefdSent",
+            ylab="Non-Zero")
+```
+
+
+
+
+
+
+
+
