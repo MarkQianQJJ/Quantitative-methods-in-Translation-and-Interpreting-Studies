@@ -1,0 +1,74 @@
+---
+title: "chisquare"
+format: docx
+editor: visual
+---
+
+A **chi-square test of independence** was run to examine whether **Relation type** and **Explicitation status** are statistically associated.
+
+> Are explicitations distributed similarly across Contrast and Consequence relations, or is there a statistically meaningful difference?
+
+```{r}
+data <- matrix(c(48, 732,
+                 102, 497),
+               nrow = 2,
+               byrow = TRUE,
+               dimnames = list(
+                 Relation = c("Contrast", "Consequence"),
+                 Explicitation = c("Explicit", "NonExplicit")
+               ))
+
+```
+
+```{r}
+# 查看表格
+print(data)
+```
+
+```{r}
+# 执行卡方独立性检验（关闭连续性校正）
+result <- chisq.test(data,correct = FALSE)
+
+# 输出结果
+print(result)
+```
+
+Expected counts represent what we would expect **if Relation and Explicitation were independent**.
+
+For example, under independence, the test expected about **84.84 Explicit cases** in the Contrast row, but you observed only **48**. That is much lower than expected.
+
+Likewise, the test expected about **65.16 Explicit cases** in the Consequence row, but you observed **102**. That is much higher than expected.
+
+All expected counts are well above 5, so the chi-square approximation is appropriate.
+
+![](images/clipboard-2739338937.png)
+
+![](images/clipboard-4192104551.png)
+
+![](images/clipboard-3303015128.png)
+
+![](images/clipboard-4256533852.png)
+
+```{r}
+result$expected
+```
+
+Standardized residuals show which cells contribute most strongly to the significant result.
+
+A rough rule of thumb is:
+
+| Residual size       | Interpretation        |
+|---------------------|-----------------------|
+| around ±2           | notable deviation     |
+| around ±3 or larger | strong deviation      |
+| ±6.429              | very strong deviation |
+
+So, the significant chi-square result is driven by the fact that **Consequence relations are much more likely to be Explicit**, while **Contrast relations are much more likely to be NonExplicit**.
+
+```{r}
+# 事后分析：标准化残差（standardized residuals）
+std_res <- result$stdres
+print(round(std_res, 3))
+```
+
+> A Pearson chi-square test of independence was conducted to examine the relationship between Relation type and Explicitation status. The association was statistically significant, χ²(1, N = 1379) = 41.33, p \< .001, Cramér’s V = .173. Consequence relations were more likely to be explicit than Contrast relations: 17.03% of Consequence relations were Explicit, compared with 6.15% of Contrast relations. Standardized residuals showed that Explicit cases were underrepresented among Contrast relations and overrepresented among Consequence relations, with residuals of ±6.429.

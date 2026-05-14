@@ -1,0 +1,45 @@
+---
+title: "correlation"
+format: docx
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+mydf <- read_csv("Newsela_SCA.csv")
+```
+
+```{r}
+attach(mydf)
+
+plot(MLS,MLT,main='Scatterplot of MLS and MLT',xlab='MLS',ylab='MLT')
+abline(lm(MLS~MLT),col='red',lwd=2)
+```
+
+```{r}
+attach(mydf)
+
+shapiro.test(MLS)
+shapiro.test(MLT)
+```
+
+```{r}
+par(mfrow=c(1,2))
+hist(MLS,main='Histogram
+for
+MLS',xlab='MLS')
+
+hist(MLT,main='Histogram
+for MLT',xlab='MLT')
+```
+
+```{r}
+cor.test(MLS,MLT,
+         alternative = "two.sided",
+         method = "spearman")
+```
+
+A Spearman’s rank-order correlation was conducted to examine the relationship between MLS and MLT. The analysis revealed a very strong positive correlation between the two variables, rs=.987, p\<.001, indicating that higher MLS values were strongly associated with higher MLT values.
