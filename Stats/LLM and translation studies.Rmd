@@ -1,0 +1,216 @@
+---
+title: "LLM in translation"
+author: "Jiajun"
+date: "2025-03-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+setwd("D:/翻译学研究前沿2025")
+```
+
+```{r}
+library(tidyverse)
+LLM <-read_csv("data.csv")
+```
+
+```{r}
+glimpse(LLM)
+```
+RQ1: how many learners?
+```{r}
+x1 <- LLM %>% 
+  distinct(learner) %>% 
+  nrow()
+x1
+```
+
+```{r}
+x1 <- LLM %>%
+  distinct(learner)
+x1
+```
+
+
+```{r}
+x2 <- LLM %>%
+  distinct(ntext) %>%
+  nrow()
+x2
+```
+
+
+```{r}
+colnames(LLM)
+```
+
+RQ2:How many translated texts have each L2 learner contributed to each condition (Original and GPT)?
+
+```{r}
+# Group by 'learner' and 'corpus', and count the number of occurrences
+learner_corpus_counts <- LLM %>%
+  group_by(learner, corpus) %>%
+  summarise(data_count = n())
+
+# View the result
+print(learner_corpus_counts)
+```
+```{r}
+text_counts <- LLM %>%
+  group_by(corpus) %>%
+  summarise(text_count = n_distinct(text))
+
+text_counts
+```
+# Summarize the data to count the number of times each text was translated by different learners
+```{r}
+library(tidyverse)
+
+# Summarize the data to check how many unique learners translated each text
+text_learner_summary <- LLM %>%
+  group_by(text) %>%
+  summarise(unique_learners = n_distinct(learner), .groups = 'drop') %>%
+  mutate(is_translated_by_multiple_learners = unique_learners > 1)
+
+# Display the summary to check which texts have been translated by multiple learners
+print(text_learner_summary)
+```
+
+
+#lexical density
+```{r}
+LD <- LLM %>%
+  group_by(corpus) %>%
+  summarise(mLD=median(Lexical_density_tokens),sdLD=sd(Lexical_density_tokens))
+
+LD
+```
+#visualization
+```{r}
+library(ggplot2)
+ggplot(LLM, aes(corpus, Lexical_density_tokens, fill = corpus)) +
+  geom_boxplot() +
+  scale_y_continuous("Lexical density")+
+  scale_x_discrete("corpus") +
+  theme(legend.position = "top")
+```
+```{r}
+attach(LLM)
+#shapiro.test(Lexical_density_tokens)
+shapiro.test(Lexical_density_tokens)
+```
+
+```{r}
+hist(LLM$Lexical_density_tokens, main="")
+```
+
+######model fitting####
+```{r}
+library(lme4)
+library(lmerTest)
+```
+```{r}
+table(LLM$learner,LLM$corpus)
+```
+
+```{r}
+View(LLM)
+```
+
+#the impact of corpus type on lexcial density
+```{r}
+summary(m.LD <- lmer(Lexical_density_tokens~
+                       1+corpus+(1|learner)+(1|text),data=LLM))
+```
+
+```{r}
+#model criticism
+LLM_LD <- LLM %>%
+  filter(abs(scale(resid(m.LD)))<=2.5)
+```
+
+
+```{r}
+summary(m.LDfinal <- update(m.LD,.~.,data=LLM_LD))
+```
+```{r}
+#examine the residuals
+hist(resid(m.LDfinal))
+```
+
+```{r}
+#compute R square
+MuMIn::r.squaredGLMM(m.LDfinal)
+```
+                            
+```{r}
+#main effects
+afex::mixed(Lexical_density_tokens ~ corpus +(1 | learner) ,data=LLM_LD,method="LRT")
+```
+```{r}
+vif.mer <- function (fit) {
+  ## adapted from rms::vif
+  
+  v <- vcov(fit)
+  nam <- names(fixef(fit))
+  
+  ## exclude intercepts
+  ns <- sum(1 * (nam == "Intercept" | nam == "(Intercept)"))
+  if (ns > 0) {
+    v <- v[-(1:ns), -(1:ns), drop = FALSE]
+    nam <- nam[-(1:ns)]
+  }
+  
+  d <- diag(v)^0.5
+  v <- diag(solve(v/(d %o% d)))
+  names(v) <- nam
+  v
+}
+
+vif.mer(m.LDfinal)
+```
+```{r}
+library(effects)
+plot(allEffects(m.LDfinal))
+```
+https://rpubs.com/HaroldNelsonJr43/260932
+```{r}
+# Load necessary libraries
+library(corrplot)
+
+attach(LLM)
+# Select columns from G to AC
+selected_columns <- LLM %>%
+  select(Lexical_density_tokens:C_S)
+
+# Calculate the correlation matrix
+cor_matrix <- cor(selected_columns, use = "complete.obs")  # "complete.obs" handles missing values
+
+# Create the correlation plot
+corrplot(cor_matrix, method = "circle", type = "upper", 
+         tl.cex = 0.8, # Text label size
+         tl.col = "black", # Text color
+         diag = FALSE) # Hide the diagonal
+```
+
+
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
